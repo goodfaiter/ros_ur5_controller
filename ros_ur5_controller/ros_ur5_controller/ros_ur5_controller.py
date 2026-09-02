@@ -36,11 +36,11 @@ class RosUR5Controller(Node):
 
     def _declare_parameters(self):
         self.host = self.declare_parameter("host", "192.168.137.1").get_parameter_value().string_value
-        self.port = self.declare_parameter("port", 30010).get_parameter_value().integer_value
         self.tcp = self.declare_parameter("tcp", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).get_parameter_value().double_array_value
         self.payload = self.declare_parameter("payload", 0.0).get_parameter_value().double_value
         self.acc = self.declare_parameter("acc", 0.5).get_parameter_value().double_value
         self.control_rate = self.declare_parameter("control_rate", 50.0).get_parameter_value().double_value
+        self.velocity_timeout = self.declare_parameter("velocity_timeout", 0.2).get_parameter_value().double_value
 
         self.desired_velocity_topic = (
             self.declare_parameter("desired_velocity_topic", "/desired_velocity").get_parameter_value().string_value
@@ -55,10 +55,9 @@ class RosUR5Controller(Node):
         )
 
     def _setup_communication(self):
-        self.get_logger().info(f"Waiting for UR5 to connect on {self.host}:{self.port} ...")
+        self.get_logger().info(f"Connecting to UR5 RTDE at {self.host} ...")
         self._robot = UR5Robot(
             host=self.host,
-            port=self.port,
             tcp=list(self.tcp),
             payload=self.payload,
             logger=self.get_logger(),
@@ -77,6 +76,7 @@ class RosUR5Controller(Node):
 
     def _desired_velocity_callback(self, msg: Twist):
         self._desired_velocity = msg
+        self._last_velocity_stamp = self.get_clock().now()
 
     def _control_and_state_callback(self):
         stamp = self.get_clock().now().to_msg()
@@ -97,8 +97,14 @@ class RosUR5Controller(Node):
             pose_msg.pose.orientation.w = qw
             self.measured_pose_publisher.publish(pose_msg)
 
+        # Stop the robot if no new velocity command has arrived within the timeout.
         if self._desired_velocity is None:
             return
+
+        if hasattr(self, "_last_velocity_stamp"):
+            if (self.get_clock().now() - self._last_velocity_stamp).nanoseconds / 1e9 > self.velocity_timeout:
+                self._robot.speed_stop()
+                return
 
         twist = self._desired_velocity
         vx = twist.linear.x

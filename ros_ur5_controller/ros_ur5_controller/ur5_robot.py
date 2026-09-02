@@ -1,182 +1,113 @@
 import math
-import socket
-import time
+
+import rtde_control
+import rtde_receive
 
 
 class UR5Robot:
-    """Minimal socket-only driver for a UR5 robot.
+    """Driver for a UR5 robot based on the ur_rtde library.
 
-    This is a stripped-down driver that communicates with the UR5 real-time
-    socket program used by the kg_robot framework. It keeps only the commands
-    needed by the ROS controller: Cartesian moves, state reads, and shutdown.
+    Unlike the old socket-only driver, this connects to the robot as an RTDE
+    client. The robot must be running the official ``ExternalControl`` URCap
+    program on the teach pendant, which opens the RTDE data and script ports
+    (30003 / 30004).
     """
 
-    def __init__(self, host, port, tcp=None, payload=None, logger=None):
+    def __init__(self, host, tcp=None, payload=None, logger=None):
         self.host = host
-        self.port = port
         self.tcp = tcp if tcp is not None else [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.payload = payload if payload is not None else 0.0
-        self.c = None
-        self.open = False
         self.logger = logger
+        self.is_speeding = False
 
         self._connect()
-        # self.set_tcp(self.tcp)
-        # self.set_payload(self.payload)
 
     def _connect(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((self.host, self.port))
-        s.listen(5)
-        self.c, self.addr = s.accept()
-        self.open = True
-
-    def _format_prog(self, cmd, pose=None, acc=0.5, vel=0.5, t=0.0, r=0.0, wait=True):
-        if pose is None:
-            pose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        wait_flag = 0 if wait else 1
-        return "({},{},{},{},{},{},{},{},{},{},{},{})\n".format(
-            cmd, *pose, acc, vel, t, r, wait_flag
-        )
-
-    def _recv_response(self, timeout=1.0):
-        """Read a single response from the socket, terminated by a newline."""
-        self.c.settimeout(timeout)
-        data = b""
-        try:
-            while b"\n" not in data:
-                chunk = self.c.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
-        except socket.timeout:
-            pass
-        finally:
-            self.c.settimeout(None)
-        return bytes.decode(data, errors="replace")
-
-    def _socket_send(self, prog, expect_reply=True):
-        self.c.send(str.encode(prog))
-        if expect_reply:
-            return self._recv_response()
-        return ""
-
-    def _flush_socket(self, timeout=0.05):
-        """Drain any stale data from the socket buffer."""
-        if self.c is None:
-            return
-        stale = []
-        self.c.settimeout(timeout)
-        try:
-            while True:
-                data = self.c.recv(4096)
-                if not data:
-                    break
-                stale.append(data)
-        except socket.timeout:
-            pass
-        finally:
-            self.c.settimeout(None)
-        if stale and self.logger is not None:
-            self.logger.warning(f"Flushed stale socket data: {bytes.decode(b''.join(stale), errors='replace')[:200]}")
-
-    def socket_send_no_block(self, prog):
-        """Send a non-blocking command without waiting for a reply."""
-        self.c.send(str.encode(prog))
-        time.sleep(0.001)
-        self._flush_socket()
-
-    @staticmethod
-    def _parse_pose_list(msg):
-        """Parse a bracketed comma-separated list of floats."""
-        msg = msg.strip()
-        if msg.startswith("("):
-            msg = msg[1:]
-        if msg.endswith(")"):
-            msg = msg[:-1]
-        # Some responses contain a leading 'p' marker, e.g. "p[1.0,2.0,...]"
-        parts = msg.split("p")
-        if len(parts) > 1:
-            msg = parts[-1]
-        msg = msg.strip("[]")
-        if not msg:
-            return []
-        return [float(x.strip()) for x in msg.split(",") if x.strip()]
-
-    def _decode_msg(self, prog, retries=3):
-        for attempt in range(retries):
-            self._flush_socket()
-            msg = self._socket_send(prog)
-            try:
-                parsed = self._parse_pose_list(msg)
-                if parsed:
-                    return parsed
-            except ValueError as e:
-                if self.logger is not None:
-                    self.logger.warning(
-                        f"Failed to parse response from '{msg[:200]}': {e}. Retry {attempt + 1}/{retries}."
-                    )
-                time.sleep(0.001)
-        return []
+        self.rtde_c = rtde_control.RTDEControlInterface(self.host)
+        self.rtde_r = rtde_receive.RTDEReceiveInterface(self.host)
+        if not self.rtde_c.isConnected():
+            raise ConnectionError(f"Unable to connect RTDE control to {self.host}")
+        if not self.rtde_r.isConnected():
+            raise ConnectionError(f"Unable to connect RTDE receive to {self.host}")
+        if self.tcp is not None:
+            self.rtde_c.setTcp(self.tcp)
+        if self.payload is not None:
+            self.rtde_c.setPayload(self.payload)
 
     def close(self):
-        if self.open and self.c is not None:
-            prog = self._format_prog(100)
-            self.logger.info(self._socket_send(prog))
-            self.c.close()
-        self.open = False
+        if self.is_speeding:
+            try:
+                self.rtde_c.speedStop()
+            except Exception as e:
+                if self.logger is not None:
+                    self.logger.warning(f"speedStop failed during close: {e}")
+            self.is_speeding = False
+        try:
+            self.rtde_c.stopScript()
+        except Exception as e:
+            if self.logger is not None:
+                self.logger.warning(f"stopScript failed during close: {e}")
+        self.rtde_r.disconnect()
+        self.rtde_c.disconnect()
 
     # -------------------------------------------------------------------------
     # UR5 Commands
     # -------------------------------------------------------------------------
     def movel_no_block(self, pose, acc=0.5, vel=0.5, min_time=0.0, radius=0.0):
         """Linear move in Cartesian space without blocking."""
-        prog = self._format_prog(2, pose=pose, acc=acc, vel=vel, t=min_time, r=radius, wait=False)
-        self.socket_send_no_block(prog)
+        if self.is_speeding:
+            self.rtde_c.speedStop()
+            self.is_speeding = False
+        self.rtde_c.moveL(pose, vel, acc, radius)
 
     def speedl(self, velocity, acc=1.0, duration=0.02):
         """Set TCP velocity [vx,vy,vz,wx,wy,wz] and block until it completes."""
-        prog = self._format_prog(6, pose=velocity, acc=acc, t=duration, r=0.0, wait=True)
-        return self._socket_send(prog)
+        self.is_speeding = True
+        return self.rtde_c.speedL(velocity, acc, duration)
 
     def speedl_no_block(self, velocity, acc=1.0):
         """Set TCP velocity [vx,vy,vz,wx,wy,wz] without blocking."""
-        prog = self._format_prog(6, pose=velocity, acc=acc, t=0.0, r=0.0, wait=False)
-        self.socket_send_no_block(prog)
+        self.is_speeding = True
+        return self.rtde_c.speedL(velocity, acc, 0.0)
+
+    def speed_stop(self):
+        if self.is_speeding:
+            self.rtde_c.speedStop()
+            self.is_speeding = False
 
     def getl(self):
         """Get TCP position [x, y, z, rx, ry, rz] with rotation vector."""
-        prog = self._format_prog(10)
-        return self._decode_msg(prog)
+        return list(self.rtde_r.getActualTCPPose())
 
     def getj(self):
         """Get joint positions [j0..j5] in radians."""
-        prog = self._format_prog(11)
-        return self._decode_msg(prog)
+        return list(self.rtde_r.getActualQ())
 
     def get_forces(self):
         """Get [Fx, Fy, Fz, Tx, Ty, Tz]."""
-        prog = self._format_prog(14)
-        return self._decode_msg(prog)
+        return list(self.rtde_r.getActualTCPForce())
 
     def getlv(self):
         """Get TCP velocity [vx, vy, vz, wx, wy, wz]."""
-        prog = self._format_prog(16)
-        return self._decode_msg(prog)
+        return list(self.rtde_r.getActualTCPSpeed())
 
     def set_tcp(self, tcp):
         """Set robot tool centre point."""
         self.tcp = tcp
-        prog = self._format_prog(20, pose=tcp)
-        return self._socket_send(prog)
+        return self.rtde_c.setTcp(tcp)
 
     def set_payload(self, weight, cog=None):
         """Set payload in kg."""
+        self.payload = weight
         if cog is None:
             cog = self.tcp
-        prog = self._format_prog(21, pose=cog + [0.0, 0.0, 0.0], acc=weight)
-        return self._socket_send(prog)
+        return self.rtde_c.setPayload(weight, cog)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 # -------------------------------------------------------------------------
