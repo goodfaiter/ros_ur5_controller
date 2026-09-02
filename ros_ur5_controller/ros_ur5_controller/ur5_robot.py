@@ -29,10 +29,10 @@ class UR5Robot:
             raise ConnectionError(f"Unable to connect RTDE control to {self.host}")
         if not self.rtde_r.isConnected():
             raise ConnectionError(f"Unable to connect RTDE receive to {self.host}")
-        if self.tcp is not None:
-            self.rtde_c.setTcp(self.tcp)
-        if self.payload is not None:
-            self.rtde_c.setPayload(self.payload)
+        # if self.tcp is not None:
+        #     self.rtde_c.setTcp(self.tcp)
+        # if self.payload is not None:
+        #     self.rtde_c.setPayload(self.payload)
 
     def close(self):
         if self.is_speeding:

@@ -35,7 +35,7 @@ class RosUR5Controller(Node):
         self.timer = self.create_timer(control_period, self._control_and_state_callback)
 
     def _declare_parameters(self):
-        self.host = self.declare_parameter("host", "192.168.137.1").get_parameter_value().string_value
+        self.host = self.declare_parameter("host", "192.168.137.3").get_parameter_value().string_value
         self.tcp = self.declare_parameter("tcp", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).get_parameter_value().double_array_value
         self.payload = self.declare_parameter("payload", 0.0).get_parameter_value().double_value
         self.acc = self.declare_parameter("acc", 0.5).get_parameter_value().double_value
