@@ -8,7 +8,6 @@ from sensor_msgs.msg import JointState
 
 from .ur5_robot import UR5Robot, rotvec_to_quaternion
 
-
 JOINT_NAMES = [
     "shoulder_pan_joint",
     "shoulder_lift_joint",
@@ -38,71 +37,31 @@ class RosUR5Controller(Node):
         self.state_timer = self.create_timer(state_period, self._state_callback)
 
     def _declare_parameters(self):
-        self.host = (
-            self.declare_parameter("host", "192.168.1.10").get_parameter_value().string_value
-        )
-        self.port = (
-            self.declare_parameter("port", 50000).get_parameter_value().integer_value
-        )
-        self.tcp = (
-            self.declare_parameter("tcp", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            .get_parameter_value()
-            .double_array_value
-        )
-        self.payload = (
-            self.declare_parameter("payload", 0.0).get_parameter_value().double_value
-        )
-        self.acc = (
-            self.declare_parameter("acc", 0.5).get_parameter_value().double_value
-        )
-        self.vel = (
-            self.declare_parameter("vel", 0.5).get_parameter_value().double_value
-        )
-        self.max_linear_velocity = (
-            self.declare_parameter("max_linear_velocity", 0.1).get_parameter_value().double_value
-        )
-        self.max_angular_velocity = (
-            self.declare_parameter("max_angular_velocity", 0.1).get_parameter_value().double_value
-        )
-        self.control_rate = (
-            self.declare_parameter("control_rate", 50.0).get_parameter_value().double_value
-        )
-        self.state_publish_rate = (
-            self.declare_parameter("state_publish_rate", 50.0)
-            .get_parameter_value()
-            .double_value
-        )
+        self.host = self.declare_parameter("host", "192.168.137.1").get_parameter_value().string_value
+        self.port = self.declare_parameter("port", 30010).get_parameter_value().integer_value
+        self.tcp = self.declare_parameter("tcp", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).get_parameter_value().double_array_value
+        self.payload = self.declare_parameter("payload", 0.0).get_parameter_value().double_value
+        self.acc = self.declare_parameter("acc", 0.5).get_parameter_value().double_value
+        self.vel = self.declare_parameter("vel", 0.5).get_parameter_value().double_value
+        self.max_linear_velocity = self.declare_parameter("max_linear_velocity", 0.1).get_parameter_value().double_value
+        self.max_angular_velocity = self.declare_parameter("max_angular_velocity", 0.1).get_parameter_value().double_value
+        self.control_rate = self.declare_parameter("control_rate", 50.0).get_parameter_value().double_value
+        self.state_publish_rate = self.declare_parameter("state_publish_rate", 50.0).get_parameter_value().double_value
 
         self.desired_velocity_topic = (
-            self.declare_parameter("desired_velocity_topic", "/desired_velocity")
-            .get_parameter_value()
-            .string_value
+            self.declare_parameter("desired_velocity_topic", "/desired_velocity").get_parameter_value().string_value
         )
-        self.measured_pose_topic = (
-            self.declare_parameter("measured_pose_topic", "/measured_pose")
-            .get_parameter_value()
-            .string_value
-        )
+        self.measured_pose_topic = self.declare_parameter("measured_pose_topic", "/measured_pose").get_parameter_value().string_value
         self.measured_joint_states_topic = (
-            self.declare_parameter("measured_joint_states_topic", "/measured_joint_states")
-            .get_parameter_value()
-            .string_value
+            self.declare_parameter("measured_joint_states_topic", "/measured_joint_states").get_parameter_value().string_value
         )
-        self.measured_wrench_topic = (
-            self.declare_parameter("measured_wrench_topic", "/measured_wrench")
-            .get_parameter_value()
-            .string_value
-        )
+        self.measured_wrench_topic = self.declare_parameter("measured_wrench_topic", "/measured_wrench").get_parameter_value().string_value
         self.measured_velocity_topic = (
-            self.declare_parameter("measured_velocity_topic", "/measured_velocity")
-            .get_parameter_value()
-            .string_value
+            self.declare_parameter("measured_velocity_topic", "/measured_velocity").get_parameter_value().string_value
         )
 
     def _setup_communication(self):
-        self.get_logger().info(
-            f"Waiting for UR5 to connect on {self.host}:{self.port} ..."
-        )
+        self.get_logger().info(f"Waiting for UR5 to connect on {self.host}:{self.port} ...")
         self._robot = UR5Robot(
             host=self.host,
             port=self.port,
@@ -116,18 +75,10 @@ class RosUR5Controller(Node):
             Twist, self.desired_velocity_topic, self._desired_velocity_callback, 10
         )
 
-        self.measured_pose_publisher = self.create_publisher(
-            PoseStamped, self.measured_pose_topic, 10
-        )
-        self.measured_joint_states_publisher = self.create_publisher(
-            JointState, self.measured_joint_states_topic, 10
-        )
-        self.measured_wrench_publisher = self.create_publisher(
-            WrenchStamped, self.measured_wrench_topic, 10
-        )
-        self.measured_velocity_publisher = self.create_publisher(
-            TwistStamped, self.measured_velocity_topic, 10
-        )
+        self.measured_pose_publisher = self.create_publisher(PoseStamped, self.measured_pose_topic, 10)
+        self.measured_joint_states_publisher = self.create_publisher(JointState, self.measured_joint_states_topic, 10)
+        self.measured_wrench_publisher = self.create_publisher(WrenchStamped, self.measured_wrench_topic, 10)
+        self.measured_velocity_publisher = self.create_publisher(TwistStamped, self.measured_velocity_topic, 10)
 
     def _desired_velocity_callback(self, msg: Twist):
         self._desired_velocity = msg
