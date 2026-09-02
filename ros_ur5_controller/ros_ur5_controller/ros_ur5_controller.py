@@ -40,9 +40,6 @@ class RosUR5Controller(Node):
         self.tcp = self.declare_parameter("tcp", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).get_parameter_value().double_array_value
         self.payload = self.declare_parameter("payload", 0.0).get_parameter_value().double_value
         self.acc = self.declare_parameter("acc", 0.5).get_parameter_value().double_value
-        self.vel = self.declare_parameter("vel", 0.5).get_parameter_value().double_value
-        self.max_linear_velocity = self.declare_parameter("max_linear_velocity", 0.1).get_parameter_value().double_value
-        self.max_angular_velocity = self.declare_parameter("max_angular_velocity", 0.1).get_parameter_value().double_value
         self.control_rate = self.declare_parameter("control_rate", 50.0).get_parameter_value().double_value
 
         self.desired_velocity_topic = (
@@ -104,12 +101,12 @@ class RosUR5Controller(Node):
             return
 
         twist = self._desired_velocity
-        vx = np.clip(twist.linear.x, -self.max_linear_velocity, self.max_linear_velocity)
-        vy = np.clip(twist.linear.y, -self.max_linear_velocity, self.max_linear_velocity)
-        vz = np.clip(twist.linear.z, -self.max_linear_velocity, self.max_linear_velocity)
-        wx = np.clip(twist.angular.x, -self.max_angular_velocity, self.max_angular_velocity)
-        wy = np.clip(twist.angular.y, -self.max_angular_velocity, self.max_angular_velocity)
-        wz = np.clip(twist.angular.z, -self.max_angular_velocity, self.max_angular_velocity)
+        vx = twist.linear.x
+        vy = twist.linear.y
+        vz = twist.linear.z
+        wx = twist.angular.x
+        wy = twist.angular.y
+        wz = twist.angular.z
 
         velocity = [vx, vy, vz, wx, wy, wz]
         self._robot.speedl_no_block(velocity, acc=self.acc)
