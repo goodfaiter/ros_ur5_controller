@@ -40,27 +40,12 @@ class UR5Robot:
             cmd, *pose, acc, vel, t, r, wait_flag
         )
 
-    def _socket_send(self, prog, expect_reply=True, timeout=None):
-        msg = "No message from robot"
-        try:
-            if timeout is not None:
-                self.c.settimeout(timeout)
-            self.c.send(str.encode(prog))
-            if expect_reply:
-                msg = bytes.decode(self.c.recv(1024))
-                if msg == "No message from robot" or msg == "":
-                    self.logger.info("Robot disconnected")
-        except socket.timeout:
-            msg = ""
-        except socket.error as e:
-            self.logger.error(f"Socket error: {e}")
-        finally:
-            if timeout is not None:
-                try:
-                    self.c.settimeout(None)
-                except socket.error:
-                    pass
-        return msg
+    def _socket_send(self, prog, expect_reply=True):
+        self.c.send(str.encode(prog))
+        if expect_reply:
+            msg = bytes.decode(self.c.recv(1024))
+            return msg
+        return ""
 
     def _flush_socket(self):
         """Drain any stale data from the socket buffer."""
@@ -76,42 +61,31 @@ class UR5Robot:
                 stale.append(data)
         except socket.timeout:
             pass
-        except socket.error:
-            pass
         finally:
-            try:
-                self.c.settimeout(None)
-            except socket.error:
-                pass
+            self.c.settimeout(None)
         if stale and self.logger is not None:
             self.logger.warning(f"Flushed stale socket data: {bytes.decode(b''.join(stale), errors='replace')[:200]}")
 
     def socket_send_no_block(self, prog):
         """Send a non-blocking command without waiting for a reply."""
-        try:
-            self.c.send(str.encode(prog))
-        except socket.error as e:
-            self.logger.error(f"Socket error: {e}")
+        self.c.send(str.encode(prog))
 
     @staticmethod
     def _parse_pose_list(msg):
         """Parse a bracketed comma-separated list of floats."""
-        try:
-            msg = msg.strip()
-            if msg.startswith("("):
-                msg = msg[1:]
-            if msg.endswith(")"):
-                msg = msg[:-1]
-            # Some responses contain a leading 'p' marker, e.g. "p[1.0,2.0,...]"
-            parts = msg.split("p")
-            if len(parts) > 1:
-                msg = parts[-1]
-            msg = msg.strip("[]")
-            if not msg:
-                return []
-            return [float(x.strip()) for x in msg.split(",") if x.strip()]
-        except ValueError:
+        msg = msg.strip()
+        if msg.startswith("("):
+            msg = msg[1:]
+        if msg.endswith(")"):
+            msg = msg[:-1]
+        # Some responses contain a leading 'p' marker, e.g. "p[1.0,2.0,...]"
+        parts = msg.split("p")
+        if len(parts) > 1:
+            msg = parts[-1]
+        msg = msg.strip("[]")
+        if not msg:
             return []
+        return [float(x.strip()) for x in msg.split(",") if x.strip()]
 
     def _decode_msg(self, prog):
         self._flush_socket()
@@ -120,12 +94,9 @@ class UR5Robot:
 
     def close(self):
         if self.open and self.c is not None:
-            try:
-                prog = self._format_prog(100)
-                self.logger.info(self._socket_send(prog))
-                self.c.close()
-            except Exception as e:
-                self.logger.error(f"Error during close: {e}")
+            prog = self._format_prog(100)
+            self.logger.info(self._socket_send(prog))
+            self.c.close()
         self.open = False
 
     # -------------------------------------------------------------------------
