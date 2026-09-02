@@ -11,17 +11,18 @@ class UR5Robot:
     needed by the ROS controller: Cartesian moves, state reads, and shutdown.
     """
 
-    def __init__(self, host, port, tcp=None, payload=None):
+    def __init__(self, host, port, tcp=None, payload=None, logger=None):
         self.host = host
         self.port = port
         self.tcp = tcp if tcp is not None else [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.payload = payload if payload is not None else 0.0
         self.c = None
         self.open = False
+        self.logger = logger
 
         self._connect()
-        self.set_tcp(self.tcp)
-        self.set_payload(self.payload)
+        # self.set_tcp(self.tcp)
+        # self.set_payload(self.payload)
 
     def _connect(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -30,13 +31,12 @@ class UR5Robot:
         s.listen(5)
         self.c, self.addr = s.accept()
         self.open = True
-        print("Connected to UR5")
 
     def _format_prog(self, cmd, pose=None, acc=0.5, vel=0.5, t=0.0, r=0.0, wait=True):
         if pose is None:
             pose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         wait_flag = 0 if wait else 1
-        return "({},{},{},{},{},{},{},{},{},{},{},{}\n".format(
+        return "({},{},{},{},{},{},{},{},{},{},{},{})\n".format(
             cmd, *pose, acc, vel, t, r, wait_flag
         )
 
@@ -47,16 +47,16 @@ class UR5Robot:
             if expect_reply:
                 msg = bytes.decode(self.c.recv(1024))
                 if msg == "No message from robot" or msg == "":
-                    print("Robot disconnected")
+                    self.logger.info("Robot disconnected")
         except socket.error as e:
-            print(f"Socket error: {e}")
+            self.logger.error(f"Socket error: {e}")
         return msg
 
     def socket_send_no_block(self, prog):
         try:
             self.c.send(str.encode(prog))
         except socket.error as e:
-            print(f"Socket error: {e}")
+            self.logger.error(f"Socket error: {e}")
 
     @staticmethod
     def _parse_pose_list(msg):
@@ -83,10 +83,10 @@ class UR5Robot:
         if self.open and self.c is not None:
             try:
                 prog = self._format_prog(100)
-                print(self._socket_send(prog))
+                self.logger.info(self._socket_send(prog))
                 self.c.close()
             except Exception as e:
-                print(f"Error during close: {e}")
+                self.logger.error(f"Error during close: {e}")
         self.open = False
 
     # -------------------------------------------------------------------------

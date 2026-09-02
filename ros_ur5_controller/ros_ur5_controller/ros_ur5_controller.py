@@ -67,6 +67,7 @@ class RosUR5Controller(Node):
             port=self.port,
             tcp=list(self.tcp),
             payload=self.payload,
+            logger=self.get_logger(),
         )
         self.get_logger().info("Connected to UR5.")
 
@@ -117,40 +118,40 @@ class RosUR5Controller(Node):
             pose_msg.pose.orientation.w = qw
             self.measured_pose_publisher.publish(pose_msg)
 
-        joints = self._robot.getj()
-        if len(joints) >= 6:
-            self._measured_joints = joints
-            joint_msg = JointState()
-            joint_msg.header.stamp = stamp
-            joint_msg.name = JOINT_NAMES
-            joint_msg.position = joints[:6]
-            self.measured_joint_states_publisher.publish(joint_msg)
+        # joints = self._robot.getj()
+        # if len(joints) >= 6:
+        #     self._measured_joints = joints
+        #     joint_msg = JointState()
+        #     joint_msg.header.stamp = stamp
+        #     joint_msg.name = JOINT_NAMES
+        #     joint_msg.position = joints[:6]
+        #     self.measured_joint_states_publisher.publish(joint_msg)
 
-        wrench = self._robot.get_forces()
-        if len(wrench) >= 6:
-            wrench_msg = WrenchStamped()
-            wrench_msg.header.stamp = stamp
-            wrench_msg.header.frame_id = "ur5_tcp"
-            wrench_msg.wrench.force.x = wrench[0]
-            wrench_msg.wrench.force.y = wrench[1]
-            wrench_msg.wrench.force.z = wrench[2]
-            wrench_msg.wrench.torque.x = wrench[3]
-            wrench_msg.wrench.torque.y = wrench[4]
-            wrench_msg.wrench.torque.z = wrench[5]
-            self.measured_wrench_publisher.publish(wrench_msg)
+        # wrench = self._robot.get_forces()
+        # if len(wrench) >= 6:
+        #     wrench_msg = WrenchStamped()
+        #     wrench_msg.header.stamp = stamp
+        #     wrench_msg.header.frame_id = "ur5_tcp"
+        #     wrench_msg.wrench.force.x = wrench[0]
+        #     wrench_msg.wrench.force.y = wrench[1]
+        #     wrench_msg.wrench.force.z = wrench[2]
+        #     wrench_msg.wrench.torque.x = wrench[3]
+        #     wrench_msg.wrench.torque.y = wrench[4]
+        #     wrench_msg.wrench.torque.z = wrench[5]
+        #     self.measured_wrench_publisher.publish(wrench_msg)
 
-        velocity = self._robot.getlv()
-        if len(velocity) >= 6:
-            twist_msg = TwistStamped()
-            twist_msg.header.stamp = stamp
-            twist_msg.header.frame_id = "ur5_tcp"
-            twist_msg.twist.linear.x = velocity[0]
-            twist_msg.twist.linear.y = velocity[1]
-            twist_msg.twist.linear.z = velocity[2]
-            twist_msg.twist.angular.x = velocity[3]
-            twist_msg.twist.angular.y = velocity[4]
-            twist_msg.twist.angular.z = velocity[5]
-            self.measured_velocity_publisher.publish(twist_msg)
+        # velocity = self._robot.getlv()
+        # if len(velocity) >= 6:
+        #     twist_msg = TwistStamped()
+        #     twist_msg.header.stamp = stamp
+        #     twist_msg.header.frame_id = "ur5_tcp"
+        #     twist_msg.twist.linear.x = velocity[0]
+        #     twist_msg.twist.linear.y = velocity[1]
+        #     twist_msg.twist.linear.z = velocity[2]
+        #     twist_msg.twist.angular.x = velocity[3]
+        #     twist_msg.twist.angular.y = velocity[4]
+        #     twist_msg.twist.angular.z = velocity[5]
+        #     self.measured_velocity_publisher.publish(twist_msg)
 
     def destroy_node(self):
         self.get_logger().info("Closing UR5 connection...")
