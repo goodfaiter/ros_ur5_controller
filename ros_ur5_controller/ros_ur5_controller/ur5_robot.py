@@ -40,22 +40,37 @@ class UR5Robot:
             cmd, *pose, acc, vel, t, r, wait_flag
         )
 
+    def _recv_response(self, timeout=1.0):
+        """Read a single response from the socket, terminated by a newline."""
+        self.c.settimeout(timeout)
+        data = b""
+        try:
+            while b"\n" not in data:
+                chunk = self.c.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+        except socket.timeout:
+            pass
+        finally:
+            self.c.settimeout(None)
+        return bytes.decode(data, errors="replace")
+
     def _socket_send(self, prog, expect_reply=True):
         self.c.send(str.encode(prog))
         if expect_reply:
-            msg = bytes.decode(self.c.recv(1024))
-            return msg
+            return self._recv_response()
         return ""
 
-    def _flush_socket(self):
+    def _flush_socket(self, timeout=0.05):
         """Drain any stale data from the socket buffer."""
         if self.c is None:
             return
         stale = []
-        self.c.settimeout(0.01)
+        self.c.settimeout(timeout)
         try:
             while True:
-                data = self.c.recv(1024)
+                data = self.c.recv(4096)
                 if not data:
                     break
                 stale.append(data)
@@ -69,6 +84,8 @@ class UR5Robot:
     def socket_send_no_block(self, prog):
         """Send a non-blocking command without waiting for a reply."""
         self.c.send(str.encode(prog))
+        time.sleep(0.001)
+        self._flush_socket()
 
     @staticmethod
     def _parse_pose_list(msg):
@@ -87,10 +104,21 @@ class UR5Robot:
             return []
         return [float(x.strip()) for x in msg.split(",") if x.strip()]
 
-    def _decode_msg(self, prog):
-        self._flush_socket()
-        msg = self._socket_send(prog)
-        return self._parse_pose_list(msg)
+    def _decode_msg(self, prog, retries=3):
+        for attempt in range(retries):
+            self._flush_socket()
+            msg = self._socket_send(prog)
+            try:
+                parsed = self._parse_pose_list(msg)
+                if parsed:
+                    return parsed
+            except ValueError as e:
+                if self.logger is not None:
+                    self.logger.warning(
+                        f"Failed to parse response from '{msg[:200]}': {e}. Retry {attempt + 1}/{retries}."
+                    )
+                time.sleep(0.001)
+        return []
 
     def close(self):
         if self.open and self.c is not None:
