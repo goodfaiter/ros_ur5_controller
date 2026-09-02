@@ -107,6 +107,11 @@ class UR5Robot:
         prog = self._format_prog(2, pose=pose, acc=acc, vel=vel, t=min_time, r=radius, wait=False)
         self.socket_send_no_block(prog)
 
+    def speedl(self, velocity, acc=1.0, duration=0.02):
+        """Set TCP velocity [vx,vy,vz,wx,wy,wz] and block until it completes."""
+        prog = self._format_prog(6, pose=velocity, acc=acc, t=duration, r=0.0, wait=True)
+        return self._socket_send(prog)
+
     def speedl_no_block(self, velocity, acc=1.0):
         """Set TCP velocity [vx,vy,vz,wx,wy,wz] without blocking."""
         prog = self._format_prog(6, pose=velocity, acc=acc, t=0.0, r=0.0, wait=False)

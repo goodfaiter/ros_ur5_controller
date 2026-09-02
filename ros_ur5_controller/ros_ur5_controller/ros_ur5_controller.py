@@ -31,10 +31,8 @@ class RosUR5Controller(Node):
         self._setup_publishers_subscribers()
 
         control_period = 1.0 / self.control_rate
-        state_period = 1.0 / self.state_publish_rate
 
-        self.control_timer = self.create_timer(control_period, self._control_callback)
-        self.state_timer = self.create_timer(state_period, self._state_callback)
+        self.timer = self.create_timer(control_period, self._control_and_state_callback)
 
     def _declare_parameters(self):
         self.host = self.declare_parameter("host", "192.168.137.1").get_parameter_value().string_value
@@ -46,7 +44,6 @@ class RosUR5Controller(Node):
         self.max_linear_velocity = self.declare_parameter("max_linear_velocity", 0.1).get_parameter_value().double_value
         self.max_angular_velocity = self.declare_parameter("max_angular_velocity", 0.1).get_parameter_value().double_value
         self.control_rate = self.declare_parameter("control_rate", 50.0).get_parameter_value().double_value
-        self.state_publish_rate = self.declare_parameter("state_publish_rate", 50.0).get_parameter_value().double_value
 
         self.desired_velocity_topic = (
             self.declare_parameter("desired_velocity_topic", "/desired_velocity").get_parameter_value().string_value
@@ -84,22 +81,7 @@ class RosUR5Controller(Node):
     def _desired_velocity_callback(self, msg: Twist):
         self._desired_velocity = msg
 
-    def _control_callback(self):
-        if self._desired_velocity is None:
-            return
-
-        twist = self._desired_velocity
-        vx = np.clip(twist.linear.x, -self.max_linear_velocity, self.max_linear_velocity)
-        vy = np.clip(twist.linear.y, -self.max_linear_velocity, self.max_linear_velocity)
-        vz = np.clip(twist.linear.z, -self.max_linear_velocity, self.max_linear_velocity)
-        wx = np.clip(twist.angular.x, -self.max_angular_velocity, self.max_angular_velocity)
-        wy = np.clip(twist.angular.y, -self.max_angular_velocity, self.max_angular_velocity)
-        wz = np.clip(twist.angular.z, -self.max_angular_velocity, self.max_angular_velocity)
-
-        velocity = [vx, vy, vz, wx, wy, wz]
-        self._robot.speedl_no_block(velocity, acc=self.acc)
-
-    def _state_callback(self):
+    def _control_and_state_callback(self):
         stamp = self.get_clock().now().to_msg()
 
         pose = self._robot.getl()
@@ -117,6 +99,20 @@ class RosUR5Controller(Node):
             pose_msg.pose.orientation.z = qz
             pose_msg.pose.orientation.w = qw
             self.measured_pose_publisher.publish(pose_msg)
+
+        if self._desired_velocity is None:
+            return
+
+        twist = self._desired_velocity
+        vx = np.clip(twist.linear.x, -self.max_linear_velocity, self.max_linear_velocity)
+        vy = np.clip(twist.linear.y, -self.max_linear_velocity, self.max_linear_velocity)
+        vz = np.clip(twist.linear.z, -self.max_linear_velocity, self.max_linear_velocity)
+        wx = np.clip(twist.angular.x, -self.max_angular_velocity, self.max_angular_velocity)
+        wy = np.clip(twist.angular.y, -self.max_angular_velocity, self.max_angular_velocity)
+        wz = np.clip(twist.angular.z, -self.max_angular_velocity, self.max_angular_velocity)
+
+        velocity = [vx, vy, vz, wx, wy, wz]
+        self._robot.speedl_no_block(velocity, acc=self.acc)
 
         # joints = self._robot.getj()
         # if len(joints) >= 6:
