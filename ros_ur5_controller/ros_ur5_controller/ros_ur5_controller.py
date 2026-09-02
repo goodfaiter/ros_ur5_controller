@@ -1,11 +1,12 @@
 import math
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Pose, PoseStamped, TwistStamped, WrenchStamped
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped, WrenchStamped
 from sensor_msgs.msg import JointState
 
-from .ur5_robot import UR5Robot, quaternion_to_rotvec, rotvec_to_quaternion
+from .ur5_robot import UR5Robot, rotvec_to_quaternion
 
 
 JOINT_NAMES = [
@@ -22,7 +23,7 @@ class RosUR5Controller(Node):
     def __init__(self):
         super().__init__("ros_ur5_controller")
 
-        self._desired_pose = None
+        self._desired_velocity = None
         self._measured_pose = None
         self._measured_joints = None
 
@@ -57,6 +58,12 @@ class RosUR5Controller(Node):
         self.vel = (
             self.declare_parameter("vel", 0.5).get_parameter_value().double_value
         )
+        self.max_linear_velocity = (
+            self.declare_parameter("max_linear_velocity", 0.1).get_parameter_value().double_value
+        )
+        self.max_angular_velocity = (
+            self.declare_parameter("max_angular_velocity", 0.1).get_parameter_value().double_value
+        )
         self.control_rate = (
             self.declare_parameter("control_rate", 50.0).get_parameter_value().double_value
         )
@@ -66,8 +73,8 @@ class RosUR5Controller(Node):
             .double_value
         )
 
-        self.desired_pose_topic = (
-            self.declare_parameter("desired_pose_topic", "/desired_pose")
+        self.desired_velocity_topic = (
+            self.declare_parameter("desired_velocity_topic", "/desired_velocity")
             .get_parameter_value()
             .string_value
         )
@@ -94,7 +101,7 @@ class RosUR5Controller(Node):
 
     def _setup_communication(self):
         self.get_logger().info(
-            f"Connecting to UR5 at {self.host}:{self.port} ..."
+            f"Waiting for UR5 to connect on {self.host}:{self.port} ..."
         )
         self._robot = UR5Robot(
             host=self.host,
@@ -105,8 +112,8 @@ class RosUR5Controller(Node):
         self.get_logger().info("Connected to UR5.")
 
     def _setup_publishers_subscribers(self):
-        self.desired_pose_subscription = self.create_subscription(
-            Pose, self.desired_pose_topic, self._desired_pose_callback, 10
+        self.desired_velocity_subscription = self.create_subscription(
+            Twist, self.desired_velocity_topic, self._desired_velocity_callback, 10
         )
 
         self.measured_pose_publisher = self.create_publisher(
@@ -122,30 +129,23 @@ class RosUR5Controller(Node):
             TwistStamped, self.measured_velocity_topic, 10
         )
 
-    def _desired_pose_callback(self, msg: Pose):
-        self._desired_pose = msg
+    def _desired_velocity_callback(self, msg: Twist):
+        self._desired_velocity = msg
 
     def _control_callback(self):
-        if self._desired_pose is None:
+        if self._desired_velocity is None:
             return
 
-        pose_msg = self._desired_pose
-        qx = pose_msg.orientation.x
-        qy = pose_msg.orientation.y
-        qz = pose_msg.orientation.z
-        qw = pose_msg.orientation.w
-        rx, ry, rz = quaternion_to_rotvec(qx, qy, qz, qw)
+        twist = self._desired_velocity
+        vx = np.clip(twist.linear.x, -self.max_linear_velocity, self.max_linear_velocity)
+        vy = np.clip(twist.linear.y, -self.max_linear_velocity, self.max_linear_velocity)
+        vz = np.clip(twist.linear.z, -self.max_linear_velocity, self.max_linear_velocity)
+        wx = np.clip(twist.angular.x, -self.max_angular_velocity, self.max_angular_velocity)
+        wy = np.clip(twist.angular.y, -self.max_angular_velocity, self.max_angular_velocity)
+        wz = np.clip(twist.angular.z, -self.max_angular_velocity, self.max_angular_velocity)
 
-        target = [
-            pose_msg.position.x,
-            pose_msg.position.y,
-            pose_msg.position.z,
-            rx,
-            ry,
-            rz,
-        ]
-
-        self._robot.movel_no_block(target, acc=self.acc, vel=self.vel)
+        velocity = [vx, vy, vz, wx, wy, wz]
+        self._robot.speedl_no_block(velocity, acc=self.acc)
 
     def _state_callback(self):
         stamp = self.get_clock().now().to_msg()

@@ -14,7 +14,7 @@ COPY ros_entrypoint.sh /ros_entrypoint.sh
 
 WORKDIR /colcon_ws
 
-COPY . src/ros_ur5_controller
+COPY ./ros_ur5_controller src/ros_ur5_controller
 
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
     colcon build --symlink-install --event-handlers console_direct+ --cmake-args ' -DCMAKE_BUILD_TYPE=Release'
