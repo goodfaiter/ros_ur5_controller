@@ -81,21 +81,21 @@ class RosUR5Controller(Node):
     def _control_and_state_callback(self):
         stamp = self.get_clock().now().to_msg()
 
-        pose = self._robot.getl()
-        if len(pose) >= 6:
-            self._measured_pose = pose
-            pose_msg = PoseStamped()
-            pose_msg.header.stamp = stamp
-            pose_msg.header.frame_id = "ur5_base_link"
-            pose_msg.pose.position.x = pose[0]
-            pose_msg.pose.position.y = pose[1]
-            pose_msg.pose.position.z = pose[2]
-            qx, qy, qz, qw = rotvec_to_quaternion(pose[3], pose[4], pose[5])
-            pose_msg.pose.orientation.x = qx
-            pose_msg.pose.orientation.y = qy
-            pose_msg.pose.orientation.z = qz
-            pose_msg.pose.orientation.w = qw
-            self.measured_pose_publisher.publish(pose_msg)
+        # pose = self._robot.getl()
+        # if len(pose) >= 6:
+        #     self._measured_pose = pose
+        #     pose_msg = PoseStamped()
+        #     pose_msg.header.stamp = stamp
+        #     pose_msg.header.frame_id = "ur5_base_link"
+        #     pose_msg.pose.position.x = pose[0]
+        #     pose_msg.pose.position.y = pose[1]
+        #     pose_msg.pose.position.z = pose[2]
+        #     qx, qy, qz, qw = rotvec_to_quaternion(pose[3], pose[4], pose[5])
+        #     pose_msg.pose.orientation.x = qx
+        #     pose_msg.pose.orientation.y = qy
+        #     pose_msg.pose.orientation.z = qz
+        #     pose_msg.pose.orientation.w = qw
+        #     self.measured_pose_publisher.publish(pose_msg)
 
         # Stop the robot if no new velocity command has arrived within the timeout.
         if self._desired_velocity is None:

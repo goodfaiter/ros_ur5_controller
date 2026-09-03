@@ -1,4 +1,5 @@
 import math
+from time import time
 
 import rtde_control
 import rtde_receive
@@ -24,15 +25,26 @@ class UR5Robot:
 
     def _connect(self):
         self.rtde_c = rtde_control.RTDEControlInterface(self.host)
+        # Wait a moment for control connection to stabilize
+        # time.sleep(0.1)
+        self.logger.info(f"Connected to UR5 RTDE control at {self.host}")
         self.rtde_r = rtde_receive.RTDEReceiveInterface(self.host)
+        self.logger.info(f"Connected to UR5 RTDE receive at {self.host}")
         if not self.rtde_c.isConnected():
+            self.logger.error(f"Unable to connect RTDE control to {self.host}")
             raise ConnectionError(f"Unable to connect RTDE control to {self.host}")
         if not self.rtde_r.isConnected():
+            self.logger.error(f"Unable to connect RTDE receive to {self.host}")
             raise ConnectionError(f"Unable to connect RTDE receive to {self.host}")
         # if self.tcp is not None:
         #     self.rtde_c.setTcp(self.tcp)
         # if self.payload is not None:
         #     self.rtde_c.setPayload(self.payload)
+        
+        # Test communication by getting current pose
+        test_pose = self.rtde_r.getActualTCPPose()
+        if test_pose is None or len(test_pose) < 6:
+            raise ConnectionError("Failed to get valid data from robot")
 
     def close(self):
         if self.is_speeding:
@@ -66,9 +78,15 @@ class UR5Robot:
         return self.rtde_c.speedL(velocity, acc, duration)
 
     def speedl_no_block(self, velocity, acc=1.0):
-        """Set TCP velocity [vx,vy,vz,wx,wy,wz] without blocking."""
+        # """Set TCP velocity [vx,vy,vz,wx,wy,wz] without blocking."""
         self.is_speeding = True
         return self.rtde_c.speedL(velocity, acc, 0.0)
+        # """Set TCP velocity without blocking."""
+        # if not self.is_connected():
+        #     raise ConnectionError("RTDE not connected")
+        # self.is_speeding = True
+        # # Use a small duration for non-blocking operation
+        # return self.rtde_c.speedL(velocity, acc, 0.008)
 
     def speed_stop(self):
         if self.is_speeding:
